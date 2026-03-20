@@ -1,6 +1,6 @@
 # example-service
 
-Простой тестовый сервис для проверки полного взаимодействия с `deploy-service`:
+Простой тестовый HTTP-сервис для проверки полного взаимодействия с `deploy-service`:
 
 1. загрузка репозитория в GitHub,
 2. создание проекта в `deploy-service`,
@@ -9,14 +9,23 @@
 5. автосборка и деплой в Kubernetes.
 
 ## Что внутри
-- `cmd/server/main.go` — HTTP сервис (`/` и `/health`)
+- `cmd/server/main.go` — HTTP сервис с понятными маршрутами для браузера и probe-проверок
 - `Dockerfile` — контейнеризация сервиса
+
+## HTTP маршруты
+- `/` — человекочитаемая HTML-страница, чтобы быстро проверить деплой в браузере
+- `/health` — JSON healthcheck
+- `/ready` — JSON readiness endpoint
+- `/api/info` — JSON с версией, окружением и timestamp
 
 ## Локальный запуск
 
 ```bash
 go run ./cmd/server
+curl http://localhost:8080/
 curl http://localhost:8080/health
+curl http://localhost:8080/ready
+curl http://localhost:8080/api/info
 ```
 
 ## Подготовка GitHub репозитория
@@ -107,3 +116,11 @@ kubectl get svc -n "project-$PROJECT_ID"
 ```
 
 Если pod в статусе `Running`, то ожидаемое взаимодействие подтверждено.
+
+Если у сервиса есть внешний адрес или `port-forward`, то можно дополнительно проверить:
+
+```bash
+curl http://<SERVICE_URL>/
+curl http://<SERVICE_URL>/health
+curl http://<SERVICE_URL>/api/info
+```
