@@ -1,0 +1,119 @@
+name: Deploy Service
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build_and_deploy:
+    runs-on: ubuntu-latest
+    env:
+      YC_SERVICE_ACCOUNT_KEY_JSON: ${{ secrets.YC_SERVICE_ACCOUNT_KEY_JSON }}
+      YC_OAUTH_TOKEN: ${{ secrets.YC_OAUTH_TOKEN }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/example-service-http-example-service:${{ github.sha }}
+
+      - name: Configure kubectl
+        run: |
+          mkdir -p $HOME/.kube
+          echo "${{ secrets.KUBECONFIG_BASE64 }}" | base64 --decode > $HOME/.kube/config
+
+      - name: Install Yandex Cloud CLI
+        run: |
+          curl -sSL https://storage.yandexcloud.net/yandexcloud-yc/install.sh | bash -s -- -i $HOME/yandex-cloud -n
+          echo "$HOME/yandex-cloud/bin" >> $GITHUB_PATH
+
+      - name: Configure Yandex Cloud profile
+        if: ${{ env.YC_SERVICE_ACCOUNT_KEY_JSON != '' || env.YC_OAUTH_TOKEN != '' }}
+        run: |
+          yc config profile create default || true
+          if [ -n "$YC_SERVICE_ACCOUNT_KEY_JSON" ]; then
+            printf '%s' "$YC_SERVICE_ACCOUNT_KEY_JSON" > $HOME/sa-key.json
+            yc config set service-account-key $HOME/sa-key.json
+          elif [ -n "$YC_OAUTH_TOKEN" ]; then
+            yc config set token "$YC_OAUTH_TOKEN"
+          fi
+
+      - name: Normalize kubeconfig exec command
+        run: |
+          CURRENT_CONTEXT=$(kubectl config current-context 2>/dev/null || true)
+          if [ -z "$CURRENT_CONTEXT" ]; then
+            CURRENT_CONTEXT=$(kubectl config view -o jsonpath="{.contexts[0].name}")
+            if [ -n "$CURRENT_CONTEXT" ]; then
+              kubectl config use-context "$CURRENT_CONTEXT"
+            fi
+          fi
+          CURRENT_USER=""
+          if [ -n "$CURRENT_CONTEXT" ]; then
+            CURRENT_USER=$(kubectl config view -o jsonpath="{.contexts[?(@.name==\"$CURRENT_CONTEXT\")].context.user}")
+          fi
+          if [ -n "$CURRENT_USER" ]; then
+            kubectl config set-credentials "$CURRENT_USER" \
+              --exec-command=yc \
+              --exec-api-version=client.authentication.k8s.io/v1beta1 \
+              --exec-arg=managed-kubernetes \
+              --exec-arg=create-token
+          else
+            echo "Skipping kubeconfig exec normalization because no current user was found"
+          fi
+
+      - name: Ensure namespace exists
+        run: |
+          retry_or_fail() {
+            description="$1"
+            shift
+            for attempt in 1 2 3 4 5; do
+              if "$@"; then
+                return 0
+              fi
+              echo "$description retry $attempt failed"
+              sleep 10
+            done
+            echo "$description failed after 5 attempts"
+            return 1
+          }
+          retry_or_fail "namespace apply" sh -c 'kubectl create namespace project-prj-1774083044908231957 --dry-run=client -o yaml | kubectl apply --validate=false -f -'
+
+      - name: Deploy manifests
+        run: |
+          retry_or_fail() {
+            description="$1"
+            shift
+            for attempt in 1 2 3 4 5; do
+              if "$@"; then
+                return 0
+              fi
+              echo "$description retry $attempt failed"
+              sleep 10
+            done
+            echo "$description failed after 5 attempts"
+            return 1
+          }
+          retry_or_fail "deployment apply" sh -c 'sed "s#IMAGE_PLACEHOLDER#ghcr.io/${{ github.repository_owner }}/example-service-http-example-service:${{ github.sha }}#g" k8s/example-service/deployment.yaml | kubectl -n project-prj-1774083044908231957 apply --validate=false -f -'
+          retry_or_fail "service apply" kubectl -n project-prj-1774083044908231957 apply --validate=false -f k8s/example-service/service.yaml
