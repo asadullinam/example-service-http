@@ -98,7 +98,7 @@ jobs:
             echo "$description failed after 5 attempts"
             return 1
           }
-          retry_or_fail "namespace apply" sh -c 'kubectl create namespace project-prj-1774125800398154190 --dry-run=client -o yaml | kubectl apply --validate=false -f -'
+          retry_or_fail "namespace apply" sh -c 'kubectl create namespace project-prj-1774118775408897699 --dry-run=client -o yaml | kubectl apply --validate=false -f -'
 
       - name: Deploy manifests
         run: |
@@ -115,6 +115,6 @@ jobs:
             echo "$description failed after 5 attempts"
             return 1
           }
-          retry_or_fail "deployment apply" sh -c 'sed "s#IMAGE_PLACEHOLDER#ghcr.io/${{ github.repository_owner }}/example-service-http-example-service-http:${{ github.sha }}#g" k8s/example-service-http/deployment.yaml | kubectl -n project-prj-1774125800398154190 apply --validate=false -f -'
-          retry_or_fail "service apply" kubectl -n project-prj-1774125800398154190 apply --validate=false -f k8s/example-service-http/service.yaml
-          retry_or_fail "ingress apply" kubectl -n project-prj-1774125800398154190 apply --validate=false -f k8s/example-service-http/ingress.yaml
+          retry_or_fail "deployment apply" sh -c 'sed "s#IMAGE_PLACEHOLDER#ghcr.io/${{ github.repository_owner }}/example-service-http-example-service-http:${{ github.sha }}#g" k8s/example-service-http/deployment.yaml | kubectl -n project-prj-1774118775408897699 apply --validate=false -f -'
+          retry_or_fail "service apply" kubectl -n project-prj-1774118775408897699 apply --validate=false -f k8s/example-service-http/service.yaml
+          retry_or_fail "ingress apply" kubectl -n project-prj-1774118775408897699 apply --validate=false -f k8s/example-service-http/ingress.yaml
