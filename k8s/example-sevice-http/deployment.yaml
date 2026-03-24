@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: example-sevice-http
+  annotations:
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: example-sevice-http
+  template:
+    metadata:
+      labels:
+        app: example-sevice-http
+    spec:
+      containers:
+        - name: example-sevice-http
+          image: IMAGE_PLACEHOLDER
+          ports:
+            - containerPort: 8080
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 300m
+              memory: 256Mi
+          readinessProbe:
+            tcpSocket:
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 15
